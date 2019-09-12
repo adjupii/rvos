@@ -1,0 +1,818 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="My RVOS" basedir="." default="test">
+
+    <!-- override files need to be loaded first as addtional files added do NOT override previously set properties -->
+    <if>
+        <available file="${project.basedir}/user.properties" />
+        <then>
+            <property file="${project.basedir}/user.properties" />
+        </then>
+    </if>
+    <if>
+        <available file="${project.basedir}/build.properties" />
+        <then>
+            <property file="${project.basedir}/build.properties" />
+        </then>
+    </if>
+    <if>
+        <available file="${project.basedir}/build.properties.dist" />
+        <then>
+            <property file="${project.basedir}/build.properties.dist" />
+        </then>
+    </if>
+
+    <!-- ${build.dir} is derived by above property file -->
+    <property name="build.log.dir" value="${build.dir}/logs" />
+    <property name="build.coverage.dir" value="${build.dir}/coverage" />
+
+    <target name="check-vars"
+            depends="-host.domain,-set-environment,-load-environment,-set-project-root,-set-public-dir,-prepare,-welcome"
+            description="Variable check; to visually verify if variables are being set properly.">
+        <echo message="app.name*: ${app.name}" />
+        <echo message="env*: ${env}" />
+        <echo message="host.domain*: ${host.domain.fixed}" />
+        <echo message="version: ${version}" />
+        <echo message="app.dir*: ${app.dir}" />
+        <echo message="node.env*: ${node.env}" />
+        <echo message="project.root*: ${project.root}" />
+        <echo message="project.publicdir*: ${project.publicdir}" />
+        <echo message="server.htdocs*: ${server.htdocs}" />
+        <echo message="http-service-name: ${http-service-name}" />
+
+        <echo message="deploy.host*: ${deploy.host}" />
+        <echo message="project.package*: ${project.package}" />
+
+    </target>
+
+    <target name="-set-environment" depends="-environment"></target>
+
+    <target name="-set-project-root" depends="-project.root"></target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -load-environment                                                                                   -->
+    <!-- =========================================================================================================== -->
+    <target name="-load-environment" depends="-environment,-project.root">
+        <property name="base.conf" value="C:/config/${app.name}.env" />
+        <property name="local.conf" value="${project.root}/.env" />
+
+        <!-- Windows directory separator for command-line use -->
+        <if>
+            <os family="windows" />
+            <then>
+                <php function="str_replace" returnProperty="base.conf.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${base.conf}" />
+                </php>
+                <php function="str_replace" returnProperty="local.conf.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${local.conf}" />
+                </php>
+            </then>
+        </if>
+
+        <!-- The .env file for myrvos is optional -->
+        <if>
+            <and>
+                <os family="windows" />
+                <available file="${base.conf}" />
+                <not>
+                    <available file="${local.conf}" />
+                </not>
+            </and>
+            <then>
+                <copy file="${base.conf.win}" tofile="${local.conf.win}" />
+<!--                <exec executable="cmd" checkreturn="true" passthru="true">-->
+<!--                    <arg value="/C" />-->
+<!--                    <arg value="mklink ${local.conf.win} ${base.conf.win}" />-->
+<!--                </exec>-->
+            </then>
+        </if>
+        <if>
+            <and>
+                <not>
+                    <os family="windows" />
+                </not>
+                <available file="${base.conf}" />
+                <not>
+                    <available file="${local.conf}" />
+                </not>
+            </and>
+            <then>
+                <symlink link="${local.conf}" target="${base.conf}" />
+            </then>
+        </if>
+
+        <!-- Load the environment file(s) as phing variables -->
+        <if>
+            <available file="${local.conf}" />
+            <then>
+                <property file="${local.conf}" />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: test                                                                                                -->
+    <!-- =========================================================================================================== -->
+    <target name="test"
+            depends="-prepare,-welcome,test:jest-no-coverage"
+            description="Automated testing" unless="test.done">
+        <property name="test.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: test:jest                                                                                           -->
+    <!-- =========================================================================================================== -->
+    <target name="test:jest-no-coverage" unless="test-jest-no-coverage.done"
+            depends="-prepare,-welcome"
+            description="Run unit tests with PHPUnit ">
+        <if>
+            <not>
+                <available file="${build.log.dir}" type="dir" />
+            </not>
+            <then>
+                <mkdir dir="${build.log.dir}" />
+            </then>
+        </if>
+        <exec executable="${yarn}" checkreturn="true">
+            <arg value="jest" />
+        </exec>
+        <property name="test-jest-no-coverage.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: ci                                                                                                  -->
+    <!-- =========================================================================================================== -->
+    <target name="ci" unless="ci.done"
+            depends="ci:prepare,-welcome,ci:jest"
+            description="Continuous Integration">
+        <property name="ci.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: ci:prepare                                                                                          -->
+    <!-- =========================================================================================================== -->
+    <target name="ci:prepare" unless="ci.prepare.done"
+            depends="-host.domain,-set-environment,-load-environment,-set-project-root,-set-public-dir"
+            description="Prepare the project for automated testing.">
+        <property name="project.root" value="${project.basedir}" />
+
+        <mkdir dir="${build.log.dir}" />
+        <mkdir dir="${build.coverage.dir}" />
+
+        <property name="ci.prepare.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: ci:jest                                                                                             -->
+    <!-- =========================================================================================================== -->
+    <target name="ci:jest" unless="jest.done" depends="ci:prepare,-welcome"
+            description="Run unit tests with Jest">
+        <exec executable="${yarn}" returnProperty="result.phpunit">
+            <arg value="jest" />
+            <arg value="--ci" />
+            <arg value="--coverage" />
+        </exec>
+        <property name="jest.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: build                                                                                               -->
+    <!-- =========================================================================================================== -->
+    <target name="build" unless="build.done"
+            depends="-prepare,-welcome"
+            description="Build the project. Dependencies, configuration, etc.">
+        <phingcall target="-webpack">
+            <property name="project.root" value="${project.basedir}" />
+        </phingcall>
+
+        <property name="build.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: build:var-check                                                                                     -->
+    <!-- =========================================================================================================== -->
+    <target name="build:var-check" depends="-get-properties,-var-check" unless="build.varcheck.done"
+            description="Check vars for build task; build, deploy">
+        <echo message="app.dir*: ${app.dir}" />
+        <echo message="deploy.host*: ${deploy.host}" />
+        <echo message="node.env*: ${node.env}" />
+        <echo message="project.root*: ${project.root}" />
+        <echo message="project.publicdir*: ${project.publicdir}" />
+        <echo message="project.package*: ${project.package}" />
+        <echo message="server.htdocs*: ${server.htdocs}" />
+
+        <property name="build.varcheck.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: package                                                                                             -->
+    <!-- =========================================================================================================== -->
+    <target name="package" depends="-get-properties,-version,-prepare,-welcome"
+            description="Package the project. Compress the project files into an archive file.">
+
+        <property name="release.dir" value="${build.dir}/releases/${version}" />
+        <if>
+            <available file="${release.dir}" property="release.dir.exists" />
+            <then>
+                <delete dir="${release.dir}" />
+            </then>
+        </if>
+        <mkdir dir="${release.dir}" />
+        <copy file="${project.basedir}/build.properties.dist" tofile="${release.dir}/build.deploy.properties" />
+        <echo file="${release.dir}/build.deploy.properties" append="true">${line.separator}version = ${version}</echo>
+        <echo file="${release.dir}/build.deploy.properties" append="true">${line.separator}app.name = ${app.name}</echo>
+
+        <copy file="${project.basedir}/build.xml" tofile="${release.dir}/build.xml" />
+
+        <zip destfile="${release.dir}/${project.package}">
+            <fileset dir="${project.basedir}">
+                <exclude name=".git**" />
+                <exclude name=".env**" />
+                <exclude name=".gitignore" />
+                <exclude name=".idea/**" />
+                <exclude name="*.bat" />
+                <exclude name="*.cache" />
+                <exclude name="*.log" />
+                <exclude name="*.properties" />
+                <exclude name="*.zip" />
+                <exclude name="build/**" />
+                <exclude name="node_modules/**" />
+                <exclude name="public/**" />
+            </fileset>
+        </zip>
+        <if>
+            <available file="${release.dir}/${project.package}" property="project.package.exists" value="true" />
+            <else>
+                <property name="project.package.exists" value="false" />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: send-to-host                                                                                  -->
+    <!-- =========================================================================================================== -->
+    <target name="send-to-host" unless="host.received"
+            depends="-get-properties,deploy:host,-version,-prepare,-welcome"
+            description="Send the project files to a host shared drive for deployment.">
+        <if>
+            <not>
+                <available file="${release.dir}/${project.package}" property="project.package.exists" />
+            </not>
+            <then>
+                <fail message="Unable to find archive file to send to deployment host." />
+            </then>
+        </if>
+        <if>
+            <available file="${deploy.host}/packages/${app.name}" type="dir" property="package.dir.exists" />
+            <then>
+                <delete dir="${deploy.host}/packages/${app.name}" includeemptydirs="true" />
+            </then>
+        </if>
+        <mkdir dir="${deploy.host}/packages/${app.name}" />
+        <copy todir="${deploy.host}/packages/${app.name}" haltonerror="true">
+            <fileset dir="${release.dir}">
+                <include name="${project.package}" />
+                <include name="build.**" />
+            </fileset>
+        </copy>
+        <if>
+            <not>
+                <available file="${deploy.host}/packages/${app.name}/${project.package}" property="host.received" />
+            </not>
+            <then>
+                <fail message="Failed to send the application package to the deployment server." />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy                                                                                              -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy" unless="deploy.done"
+            depends="-get-properties,-version,-prepare,-welcome"
+            description="Deploy an application.">
+        <echo message="Deploying '${app.name}', version '${version}', to '${project.root} for the '${env}' environment on the '${host.domain.fixed}' server." />
+
+        <if>
+            <not>
+                <available file="${project.root}" type="dir" property="project.root.exists" />
+            </not>
+            <then>
+                <mkdir dir="${project.root}" />
+            </then>
+        </if>
+
+        <phingcall target="deploy:extract-app-archive" />
+
+        <!-- encore webpack comes after composer, because composer installs it for Symfony. -->
+        <phingcall target="-webpack" />
+        <!-- create the symlink from the htdocs directory to the application public html directory -->
+        <phingcall target="deploy:update-app-symlink" />
+        <!-- update the apache configuration symlink -->
+        <phingcall target="deploy:update-apache-symlink" />
+        <!-- restart apache; gracefully!!! -->
+        <phingcall target="-apache-httpd-restart" />
+
+        <property name="deploy.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:cleanup                                                                                      -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:cleanup" depends="-appname,-prepare,deploy:host"
+            description="Cleanup artifacts after a deployment.">
+        <if>
+            <available file="${project.basedir}/${project.package}" property="project.package.exists" />
+            <then>
+                <delete file="${project.basedir}/${project.package}" failonerror="true" />
+            </then>
+        </if>
+
+        <echo message="deployed to: ${deploy.host}/packages/${app.name}" />
+        <if>
+            <available file="${deploy.host}/packages/${app.name}" property="app.deployed" />
+            <then>
+                <delete dir="${deploy.host}/packages/${app.name}" includeemptydirs="true" verbose="true" failonerror="true" />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:host                                                                                         -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:host" description="Define the host to send the project archive files to.">
+        <property name="deploy.host" value="${deployto}" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -get-properties                                                                                     -->
+    <!-- =========================================================================================================== -->
+    <target name="-get-properties"
+            description="Imports build.deploy.properties file as it may not be necessary for all main tasks; test, build, deploy">
+        <if>
+            <available file="${project.basedir}/build.deploy.properties" property="from.project" />
+            <then>
+                <property file="${project.basedir}/build.deploy.properties" />
+            </then>
+            <else>
+                <property file="${phing.dir}/build.deploy.properties" />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -var-check                                                                                          -->
+    <!-- =========================================================================================================== -->
+    <target name="-var-check" unless="varcheck.done"
+            description="Check vars for all main tasks; test, ci, build, deploy">
+        <echo message="app.name*: ${app.name}" />
+        <echo message="env*: ${env}" />
+        <echo message="host.domain*: ${host.domain.fixed}" />
+        <echo message="version: ${version}" />
+
+        <property name="varcheck.done" value="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -welcome                                                                                            -->
+    <!-- =========================================================================================================== -->
+    <target name="-welcome"
+            description="Project information to display on each primary task run; build, deploy, test.">
+        <echo message="${phing.project.name}" />
+        <echo message="${phing.version}: ${os.name} - ${host.arch} on ${host.name}" />
+        <echo message="Start time: ${phing.startTime}" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -host.domain                                                                                        -->
+    <!-- =========================================================================================================== -->
+    <target name="-host.domain" unless="host.domain.windows"
+            description="Windows compatible host.name as host.domain.fixed">
+        <if>
+            <os family="windows" />
+            <then>
+                <exec executable="powershell" outputProperty="host.domain.windows">
+                    <arg value="[System.Net.Dns]::GetHostByName($env:computerName).HostName" />
+                </exec>
+                <property name="host.domain.fixed" value="${host.domain.windows}" />
+            </then>
+            <else>
+                <property name="host.domain.fixed" value="host.domain" />
+            </else>
+        </if>
+
+        <if>
+            <not>
+                <or>
+                    <isset property="host.domain.fixed" />
+                    <equals arg1="${host.domain.fixed}" arg2="unknown" />
+                </or>
+            </not>
+            <then>
+                <fail message="Unable to determine current host domain." />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -appname                                                                                           -->
+    <!-- =========================================================================================================== -->
+    <target name="-appname" unless="app.name" description="Define the application name when not in build.properties">
+        <php function="strtolower" returnProperty="app.name.lowercase">
+            <param value="${app.name}" />
+        </php>
+
+        <php function="preg_replace" returnProperty="app.name.filtered">
+            <param value="/\s/" />
+            <param value="" />
+            <param value="${app.name.lowercase}" />
+        </php>
+
+        <property name="app.name" value="${app.name.filtered}" />
+
+        <if>
+            <not>
+                <isset property="app.name" />
+            </not>
+            <then>
+                <fail unless="app.name" message="Invalid or empty application name provided: -Dappname." />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -version                                                                                            -->
+    <!-- =========================================================================================================== -->
+    <target name="-version" unless="version" description="Defines the version when not available in build.properties">
+        <if>
+            <or>
+                <equals arg1="${version}" arg2="" />
+                <not>
+                    <isset property="version" />
+                </not>
+            </or>
+            <then>
+                <fail message="Invalid version provided: -Dversion." />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -environment                                                                                        -->
+    <!-- =========================================================================================================== -->
+    <target name="-environment" unless="env" depends="-host.domain"
+            description="Defines the environment when not available in build.properties">
+        <if>
+            <contains string="${host.domain.fixed}" substring="prod" casesensitive="false" />
+            <then>
+                <property name="env" value="prod" />
+            </then>
+        </if>
+        <if>
+            <contains string="${host.domain.fixed}" substring="stage" casesensitive="false" />
+            <then>
+                <property name="env" value="stage" />
+            </then>
+        </if>
+        <if>
+            <contains string="${host.domain.fixed}" substring="uat" casesensitive="false" />
+            <then>
+                <property name="env" value="uat" />
+            </then>
+        </if>
+        <if>
+            <contains string="${host.domain.fixed}" substring="dev" casesensitive="false" />
+            <then>
+                <property name="env" value="dev" />
+            </then>
+        </if>
+        <!-- test environment on code01 -->
+        <if>
+            <contains string="${host.domain.fixed}" substring="code" casesensitive="false" />
+            <then>
+                <property name="env" value="test" />
+            </then>
+        </if>
+        <!-- otherwise, always, default to the development environment -->
+        <if>
+            <not>
+                <isset property="env" />
+            </not>
+            <then>
+                <property name="env" value="dev" />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -project.root                                                                                       -->
+    <!-- =========================================================================================================== -->
+    <target name="-project.root" description="Sets the project root directory">
+        <if>
+            <and>
+                <isset property="version"/>
+                <isset property="app.name" />
+                <not>
+                    <equals arg1="${env}" arg2="test" />
+                </not>
+            </and>
+            <then>
+                <property name="project.root" value="${app.dir}/${app.name}/${version}" />
+            </then>
+            <elseif>
+                <and>
+                    <isset property="deployto" />
+                    <not>
+                        <equals arg1="${env}" arg2="test" />
+                    </not>
+                </and>
+                <then>
+                    <property name="project.root" value="${app.dir}/${app.name}" />
+                </then>
+            </elseif>
+            <else>
+                <property name="project.root" value="${project.basedir}" />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -prepare                                                                                            -->
+    <!-- =========================================================================================================== -->
+    <target name="-prepare"
+            depends="-appname,-load-environment"
+            description="Prepares several variables useful across each of the main tasks; test, build, deploy">
+        <property name="site-config-dir" value="" />
+        <php function="ucfirst" returnProperty="env.ucfirst">
+            <param value="${env}" />
+        </php>
+        <property name="http-service-name" value="Apache2.4" override="true">
+            <filterchain>
+                <replaceregexp>
+                    <regexp pattern="Apache2.4" replace="Apache2.4-${env.ucfirst}" />
+                </replaceregexp>
+            </filterchain>
+        </property>
+        <if>
+            <or>
+                <equals arg1="${env}" arg2="prod" />
+                <equals arg1="${env}" arg2="stage" />
+                <equals arg1="${env}" arg2="test" />
+            </or>
+            <then>
+                <property name="node.env" value="production" />
+            </then>
+            <elseif>
+                <or>
+                    <equals arg1="${env}" arg2="uat" />
+                    <equals arg1="${env}" arg2="dev" />
+                </or>
+                <then>
+                    <property name="node.env" value="development" />
+                </then>
+            </elseif>
+            <else>
+                <exec executable="cmd" outputProperty="node.env">
+                    <arg value="/C" />
+                    <arg value="echo" />
+                    <arg value="%NODE_ENV%" />
+                </exec>
+            </else>
+        </if>
+        <if>
+            <isset property="version" />
+            <then>
+                <property name="project.package" value="${app.name}_${version}.zip" />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -webpack                                                                                            -->
+    <!-- =========================================================================================================== -->
+    <target name="-webpack" depends="-environment" description="Install JavaScript and CSS dependencies.">
+        <exec executable="yarn"
+              dir="${project.root}"
+              checkreturn="true"
+              passthru="true">
+            <arg value="install" />
+        </exec>
+        <if>
+            <or>
+                <equals arg1="${env}" arg2="prod" />
+                <equals arg1="${env}" arg2="stage" />
+                <equals arg1="${env}" arg2="uat" />
+            </or>
+            <then>
+                <exec executable="yarn"
+                      dir="${project.root}"
+                      checkreturn="true"
+                      passthru="true">
+                    <arg value="run" />
+                    <arg value="build" />
+                </exec>
+            </then>
+            <else>
+                <exec executable="yarn"
+                      dir="${project.root}"
+                      checkreturn="true"
+                      passthru="true">
+                    <arg value="run" />
+                    <arg value="webpack" />
+                </exec>
+            </else>
+        </if>
+
+        <delete dir="${project.root}/node_modules" includeemptydirs="true" />
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:extract-app-archive                                                                          -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:extract-app-archive" description="Extract the application archive.">
+        <property name="app.archive" value="${phing.dir}/${project.package}" />
+        <if>
+            <available file="${app.archive}" property="app.archive.exists" />
+            <then>
+                <unzip file="${app.archive}" todir="${project.root}" />
+            </then>
+            <else>
+                <fail message="Application archive not found. Unable to deploy application." />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:app-config-symlink                                                                           -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:app-config-symlink" depends="-project.root,-get-properties,-prepare"
+            description="Create the symlink for the application .env configuration file">
+        <property name="symlink" value="${project.root}/.env.local" />
+        <property name="symlinkto" value="C:/config/${app.name}.env" />
+        <if>
+            <and>
+                <not>
+                    <available file="${project.root}/.env" property="env.exists" />
+                </not>
+                <not>
+                    <available file="${symlinkto}" property="env.config.exists" />
+                </not>
+            </and>
+            <then>
+                <fail message="Base configuration not present. Unable to create the new configuration." />
+            </then>
+        </if>
+        <if>
+            <not>
+                <available file="${symlinkto}" property="app.config.exists" />
+            </not>
+            <then>
+                <copy file="${project.root}/.env" tofile="${symlinkto}" overwrite="false" />
+            </then>
+        </if>
+        <if>
+            <os family="windows" />
+            <then>
+                <php function="str_replace" returnProperty="symlink.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlink}" />
+                </php>
+                <php function="str_replace" returnProperty="symlinkto.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlinkto}" />
+                </php>
+                <exec executable="cmd" checkreturn="true" passthru="true">
+                    <arg value="/C" />
+                    <arg value="mklink ${symlink.win} ${symlinkto.win}" />
+                </exec>
+            </then>
+            <else>
+                <symlink link="${symlink}" target="${symlinkto}" />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:update-app-symlink                                                                           -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:update-app-symlink" depends="-get-properties,-prepare,-set-public-dir"
+            description="Create the web application symlink to the application public directory">
+
+        <property name="symlink" value="${server.htdocs}/${app.name}" />
+        <property name="symlinkto" value="${project.publicdir}" />
+
+        <if>
+            <os family="windows" />
+            <then>
+                <php function="str_replace" returnProperty="symlink.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlink}" />
+                </php>
+                <php function="str_replace" returnProperty="symlinkto.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlinkto}" />
+                </php>
+                <exec executable="rmdir" passthru="true">
+                    <arg value="${symlink.win}" />
+                </exec>
+                <exec executable="cmd" checkreturn="true" passthru="true">
+                    <arg value="/C" />
+                    <arg value="mklink /D ${symlink.win} ${symlinkto.win}" />
+                </exec>
+            </then>
+            <else>
+                <delete dir="${symlink}" />
+                <symlink link="${symlink}" target="${symlinkto}" />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: deploy:update-apache-symlink                                                                        -->
+    <!-- =========================================================================================================== -->
+    <target name="deploy:update-apache-symlink" depends="-get-properties,-prepare"
+            description="Creates the symlink to the server configuration for the application">
+        <property name="symlink" value="${site-config-dir}/${app.name}.conf" />
+        <property name="symlinkto" value="${project.root}/config/apache/${app.name}.conf" />
+
+        <if>
+            <os family="windows" />
+            <then>
+                <php function="str_replace" returnProperty="symlink.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlink}" />
+                </php>
+                <php function="str_replace" returnProperty="symlinkto.win">
+                    <param value="/" />
+                    <param value="\" />
+                    <param value="${symlinkto}" />
+                </php>
+                <exec executable="del" passthru="true">
+                    <arg value="${symlink.win}" />
+                </exec>
+                <exec executable="cmd" checkreturn="true" passthru="true" outputProperty="mklink.denied">
+                    <arg value="/C" />
+                    <arg value="mklink ${symlink.win} ${symlinkto.win}" />
+                </exec>
+            </then>
+            <else>
+                <delete file="${symlink}" />
+                <symlink link="${symlink}" target="${symlinkto}" />
+            </else>
+        </if>
+        <if>
+            <equals arg1="${mklink.denied}" arg2="true" />
+            <then>
+                <fail message="Permission denied. Unable to invoke the mklink command." />
+            </then>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -set-public-dir                                                                                   -->
+    <!-- =========================================================================================================== -->
+    <target name="-set-public-dir" unless="app.public.exists" depends="-project.root"
+            description="Set the public html directory.">
+        <if>
+            <available file="${project.root}/public" type="dir" property="app.public.exists" />
+            <then>
+                <property name="project.publicdir" value="${project.root}/public" />
+                <echo message="Using public html directory: ${project.root}/public." />
+            </then>
+            <elseif>
+                <available file="${project.root}/web" type="dir" property="app.web.exists" />
+                <then>
+                    <property name="project.publicdir" value="${project.root}/web" />
+                    <echo message="Using public html directory: ${project.root}/web." />
+                </then>
+            </elseif>
+            <else>
+                <property name="project.publicdir" value="${project.root}" />
+                <echo message="Using the project root directory as the public html root is NOT recommended." />
+            </else>
+        </if>
+    </target>
+
+    <!-- =========================================================================================================== -->
+    <!-- Target: -apache-httpd-restart                                                                               -->
+    <!-- =========================================================================================================== -->
+    <target name="-apache-httpd-restart" unless="apache.restarted" description="Apache HTTP graceful restart.">
+        <exec executable="httpd.exe" checkreturn="true" passthru="true" returnProperty="apache.restarted">
+            <arg value="-k" />
+            <arg value="restart" />
+            <arg value="-f" />
+            <arg value="C:/stack/conf/httpd.conf" />
+            <arg value="-n" />
+            <arg value="${http-service-name}" />
+        </exec>
+    </target>
+
+</project>

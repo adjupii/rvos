@@ -1,0 +1,16 @@
+openssl = C:/stack/apache/bin/openssl.exe
+app.name=myrvos
+app.dir=C:/apps
+build.dir=${project.basedir}/build
+server.htdocs=C:/stack/www/htdocs
+site-config-dir=C:/stack/conf/sites
+php=php
+yarn=yarn
+
+env-fail-msg = "The env must be set using -Denv before running this target.${line.separator}For example; phing taskname -Denv=dev or -Denv=production"
+version-fail-msg = "The version must be set using -Dversion before running this target.${line.separator}For example; phing taskname -Dversion='1.x.x' or -Dversion='2.1.1'"
+deploy-host-fail-msg = "The host must be set using -Ddeployhost before running this target.${line.separator}For example; phing taskname -Ddeployhost=example.com or -Ddeployhost=machinename"
+app-root-dir-fail-msg = "The app_root_dir must be set using -Dapp_root_dir before running this target.${line.separator}For example; phing taskname -Dapp_dir=C:\apps or Dapp_dir=/var/www/html/"
+app-name-fail-msg = "The app_name must be set using -Dapp_name before running this target.${line.separator}For example; phing taskname -Dapp_name=my-app-name"
+app-dir-fail-msg = "The app_dir must be set using -Dapp_dir before running this target.${line.separator}For example; phing taskname -Dapp_dir=customer-portal/be"
+os-require-linux-msg = "You must be running a distribution of linux to automate the start/stop of the built-in server.%{line.separator}On Windows OS; run 'php bin\console server:run'."
